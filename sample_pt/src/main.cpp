@@ -20,20 +20,19 @@ namespace {
 // Global Varaibles.
 //-------------------------------------------------------------------------------------------------
 const int     g_max_depth = 5;
-const Vector3 g_light_pos   (50.0,  75.0,   81.6);
-const Vector3 g_light_color (256.0, 256.0, 256.0);
 const Vector3 g_back_ground (0.0,   0.0,    0.0);
-const Vector3 g_shadow_color(0.0,   0.0,    0.0);
 const Sphere  g_spheres[] = {
-    Sphere(1e5,     Vector3( 1e5 + 1.0,    40.8,          81.6), Vector3(0.25,  0.75,  0.25), ReflectionType::Diffuse),
-    Sphere(1e5,     Vector3(-1e5 + 99.0,   40.8,          81.6), Vector3(0.25,  0.25,  0.75), ReflectionType::Diffuse),
-    Sphere(1e5,     Vector3(50.0,          40.8,           1e5), Vector3(0.75,  0.75,  0.75), ReflectionType::Diffuse),
-    Sphere(1e5,     Vector3(50.0,          40.8,  -1e5 + 170.0), Vector3(),                   ReflectionType::Diffuse),
-    Sphere(1e5,     Vector3(50.0,           1e5,          81.6), Vector3(0.75,  0.75,  0.75), ReflectionType::Diffuse),
-    Sphere(1e5,     Vector3(50.0,   -1e5 + 81.6,          81.6), Vector3(0.75,  0.75,  0.75), ReflectionType::Diffuse),
-    Sphere(16.5,    Vector3(27.0,          16.5,          47.0), Vector3(0.75,  0.25,  0.25), ReflectionType::Specular),
-    Sphere(16.5,    Vector3(73.0,          16.5,          78.0), Vector3(0.99,  0.99,  0.99), ReflectionType::Refraction)
+    Sphere(1e5,     Vector3( 1e5 + 1.0,    40.8,          81.6), Vector3(0.25,  0.75,  0.25), ReflectionType::Diffuse,          Vector3(0, 0, 0)),
+    Sphere(1e5,     Vector3(-1e5 + 99.0,   40.8,          81.6), Vector3(0.25,  0.25,  0.75), ReflectionType::Diffuse,          Vector3(0, 0, 0)),
+    Sphere(1e5,     Vector3(50.0,          40.8,           1e5), Vector3(0.75,  0.75,  0.75), ReflectionType::Diffuse,          Vector3(0, 0, 0)),
+    Sphere(1e5,     Vector3(50.0,          40.8,  -1e5 + 170.0), Vector3(0.01,  0.01,  0.01), ReflectionType::Diffuse,          Vector3(0, 0, 0)),
+    Sphere(1e5,     Vector3(50.0,           1e5,          81.6), Vector3(0.75,  0.75,  0.75), ReflectionType::Diffuse,          Vector3(0, 0, 0)),
+    Sphere(1e5,     Vector3(50.0,   -1e5 + 81.6,          81.6), Vector3(0.75,  0.75,  0.75), ReflectionType::Diffuse,          Vector3(0, 0, 0)),
+    Sphere(16.5,    Vector3(27.0,          16.5,          47.0), Vector3(0.75,  0.25,  0.25), ReflectionType::PerfectSpecular,  Vector3(0, 0, 0)),
+    Sphere(16.5,    Vector3(73.0,          16.5,          78.0), Vector3(0.99,  0.99,  0.99), ReflectionType::Refraction,       Vector3(0, 0, 0)),
+    Sphere(5.0,     Vector3(50.0,          81.6,          81.6), Vector3(),                   ReflectionType::Diffuse,          Vector3(12, 12, 12))
 };
+//Random      g_random(123456);
 
 
 //-------------------------------------------------------------------------------------------------
@@ -62,153 +61,154 @@ inline bool intersect_scene(const Ray& ray, double* t, int* id)
 //-------------------------------------------------------------------------------------------------
 //      放射輝度を求めます.
 //-------------------------------------------------------------------------------------------------
-Vector3 radiance(const Ray& ray, int depth)
+Vector3 radiance(const Ray& input_ray, int depth, Random* random)
 {
-    double t;
-    int   id;
+    Vector3 L(0, 0, 0);
+    Vector3 W(1, 1, 1);
+    Ray ray(input_ray.pos, input_ray.dir);
 
-    // シーンとの交差判定.
-    if (!intersect_scene(ray, &t, &id))
-    { return g_back_ground; }
-
-    // 交差物体.
-    const auto& obj = g_spheres[id];
-
-    // 交差位置.
-    const auto hit_pos = ray.pos + ray.dir * t;
-
-    // 法線ベクトル.
-    const auto normal  = normalize(hit_pos - obj.pos);
-
-    // 物体からのレイの入出を考慮した法線ベクトル.
-    const auto orienting_normal = (dot(normal, ray.dir) < 0.0) ? normal : -normal;
-
-    // 打ち切り深度に達したら終わり.
-    if(depth > g_max_depth)
-    { return g_back_ground; }
-
-    switch (obj.type)
+    while(true)
     {
-    case ReflectionType::Diffuse:
+        double t;
+        int   id;
+
+        // シーンとの交差判定.
+        if (!intersect_scene(ray, &t, &id))
+        { break; }
+
+        // 交差物体.
+        const auto& obj = g_spheres[id];
+
+        // 交差位置.
+        const auto hit_pos = ray.pos + ray.dir * t;
+
+        // 法線ベクトル.
+        const auto normal  = normalize(hit_pos - obj.pos);
+
+        // 物体からのレイの入出を考慮した法線ベクトル.
+        const auto orienting_normal = (dot(normal, ray.dir) < 0.0) ? normal : -normal;
+
+        auto p = max(obj.color.x, max(obj.color.y, obj.color.z));
+
+        L += W * obj.emission;
+
+        // 打ち切り深度に達したら終わり.
+        if(depth > g_max_depth)
         {
-            double t_;
-            int    id_;
-
-            // ライトベクトル.
-            auto light_dir  = g_light_pos - hit_pos;
-
-            // ライトまでの距離.
-            auto light_dist = length(light_dir);
-
-            // ライトベクトルを正規化.
-            light_dir /= light_dist;
-
-            // ライトとの間に遮蔽物がないことを確認.
-            intersect_scene(Ray(hit_pos, light_dir), &t_, &id_);
-
-            // 遮蔽物がない場合.
-            if (t_ >= light_dist)
-            {
-                auto diffuse = obj.color * max(dot(orienting_normal, light_dir), 0.0) / (light_dist * light_dist);
-                return g_light_color * diffuse;
-            }
-            else
-            {
-                // 遮蔽物がある.
-                return g_shadow_color;
-            }
+            if (random->get_as_double() >= p)
+            { break; }
         }
-        break;
-
-    case ReflectionType::PerfectSpecular:
+        else
         {
-            // 反射させる.
-            return obj.color * radiance(Ray(hit_pos, reflect(ray.dir, normal)), depth + 1);
+            p = 1.0;
         }
-        break;
 
-    case ReflectionType::Refraction:
+        switch (obj.type)
         {
-            // 反射レイ
-            auto reflect_ray = Ray(hit_pos, reflect(ray.dir, normal));
-
-            // 内部侵入するか?
-            auto into = dot(normal, orienting_normal) > 0.0;
-
-            // 空気の屈折率
-            const auto nc = 1.0;
-
-            // 物体の屈折率
-            const auto nt = 1.5;
-
-            // Snellの法則.
-            const auto nnt = (into) ? (nc / nt) : (nt / nc);
-            const auto vn  = dot(ray.dir, orienting_normal);
-            const auto cos2t = 1.0 - nnt * nnt * (1.0 - vn * vn);
-
-            // 全反射かどうかチェック.
-            if (cos2t < 0.0)
-            { return obj.color * radiance(reflect_ray, depth + 1); }
-
-            // 屈折ベクトル.
-            auto refract = normalize(ray.dir * nnt - normal * ((into) ? 1.0 : -1.0) * (vn * nnt + sqrt(cos2t)) );
-
-            // Schlickによる Fresnel の反射係数の近似.
-            const auto a  = nt - nc;
-            const auto b  = nt + nc;
-            const auto R0 = (a * a) / (b * b);
-
-            const auto c  = 1.0 - ((into) ? -vn : dot(refract, normal));
-            const auto Re = R0 + (1.0 - R0) * pow(c, 5.0);
-
-            const auto nnt2 = pow((into) ? (nc / nt) : (nt /nc), 2.0);
-            const auto Tr = (1.0 - Re) * nnt2;
-            const auto p  = 0.25 + 0.5 * Re;
-
-            // 屈性レイ
-            Ray refract_ray(hit_pos, refract);
-
-            const auto reflect_result = radiance(reflect_ray, depth + 1) * Re;
-            const auto refract_result = radiance(refract_ray, depth + 1) * Tr;
-
-            return obj.color * (reflect_result + refract_result);
-        }
-        break;
-
-    case ReflectionType::Specular:
-        {
-            double t_;
-            int    id_;
-
-            // ライトベクトル.
-            auto light_dir  = g_light_pos - hit_pos;
-
-            // ライトまでの距離.
-            auto light_dist = length(light_dir);
-
-            // ライトベクトルを正規化.
-            light_dir /= light_dist;
-
-            // ライトまでの間に遮蔽物がないかどうかチェック.
-            intersect_scene(Ray(hit_pos, light_dir), &t_, &id_);
-            if (t_ >= light_dist)
+        case ReflectionType::Diffuse:
             {
-                auto shininess  = 500.0;
-                auto diffuse    = (obj.color / (light_dist * light_dist)) * max(dot(orienting_normal, light_dir), 0.0);
-                auto specular   = (obj.color) * pow(max(dot(light_dir, reflect(ray.dir, orienting_normal)), 0.0), shininess);
-                return g_light_color * (diffuse + specular);
+                // 基底ベクトル.
+                Vector3 u, v, w;
+
+                w = orienting_normal;
+                if (abs(w.x) > 0.1)
+                { u = normalize(cross(Vector3(0, 1, 0), w)); }
+                else
+                { u = normalize(cross(Vector3(1, 0, 0), w)); }
+                v = cross(w, u);
+
+                const auto r1 = D_2PI * random->get_as_double();
+                const auto r2 = random->get_as_double();
+                const auto r2s = sqrt(r2);
+
+                auto dir = normalize(u * cos(r1) * r2s + v * sin(r1) * r2s + w * sqrt(1.0 - r2));
+
+                ray = Ray(hit_pos, dir);
+                W *= (obj.color / p);
             }
-            else
+            break;
+
+        case ReflectionType::PerfectSpecular:
             {
-                // 遮蔽物がある.
-                return g_shadow_color;
+                ray = Ray(hit_pos, reflect(ray.dir, normal));
+                W *= (obj.color / p);
             }
+            break;
+
+        case ReflectionType::Refraction:
+            {
+                Ray reflect_ray = Ray(hit_pos, reflect(ray.dir, normal));
+                auto into = dot(normal, orienting_normal) > 0.0;
+
+                const auto nc = 1.0;
+                const auto nt = 1.5;
+                const auto nnt = (into) ? (nc / nt) : (nt / nc);
+                const auto ddn = dot(ray.dir, orienting_normal);
+                const auto cos2t = 1.0 - nnt * nnt * (1.0 - ddn * ddn);
+
+                if (cos2t < 0.0)
+                {
+                    ray = reflect_ray;
+                    W *= (obj.color / p);
+                    break;
+                }
+
+                auto dir = normalize(ray.dir * nnt - normal * ((into) ? 1.0 : -1.0) * (ddn * nnt + sqrt(cos2t)));
+
+                const auto a = nt - nc;
+                const auto b = nt + nc;
+                const auto R0 = (a * a) / (b * b);
+                const auto c = 1.0 - ((into) ? -ddn : dot(dir, normal));
+                const auto Re = R0 + (1.0 - R0) * pow(c, 5.0);
+                const auto Tr = 1.0 - Re;
+                const auto prob = 0.25 + 0.5 * Re;
+
+                if (random->get_as_double() < prob)
+                {
+                    ray = reflect_ray;
+                    W *= (obj.color * Re / prob) / p; 
+                }
+                else
+                {
+                    ray = Ray(hit_pos, dir);
+                    W *= (obj.color * Tr / (1.0 - prob)) / p;
+                }
+            }
+            break;
+
+        case ReflectionType::Specular:
+            {
+                const auto shininess = 500.0;
+                const auto phi = D_2PI * random->get_as_double();
+                const auto cost = pow( 1.0 - random->get_as_double(), 1.0 / (shininess + 1.0) );
+                const auto sint = sqrt( 1.0 - cost * cost );
+                const auto x = cos( phi ) * sint;
+                const auto y = sin( phi ) * sint;
+                const auto z = cost;
+
+                // 基底ベクトル.
+                Vector3 u, v, w;
+
+                w = reflect(ray.dir, normal);
+                if (abs(w.x) > 0.1)
+                { u = normalize(cross(Vector3(0, 1, 0), w)); }
+                else
+                { u = normalize(cross(Vector3(1, 0, 0), w)); }
+                v = cross(w, u);
+
+                auto dir = normalize(u * x + v * y * z * w);
+                auto cosine = dot(dir, normal);
+
+                ray = Ray(hit_pos, dir);
+                W *= (obj.color * cosine * (shininess + 2.0) / (shininess + 1.0)) / p;
+            }
+            break;
         }
-        break;
+
+        depth++;
     }
 
-    // どれにもヒットしなかった.
-    return g_back_ground;
+    return L;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -248,8 +248,9 @@ void save_to_bmp(const char* filename, int width, int height, const double* pixe
 int main(int argc, char** argv)
 {
     // レンダーターゲットのサイズ.
-    int width  = 640;
-    int height = 480;
+    int width   = 640;
+    int height  = 480;
+    int samples = 512;
 
     // カメラ用意.
     Camera camera(
@@ -269,16 +270,24 @@ int main(int argc, char** argv)
     for (size_t i = 0; i < image.size(); ++i)
     { image[i] = g_back_ground; }
 
-    for (auto y = 0; y < height; ++y)
+    for(auto s = 0; s < samples; ++s)
     {
-        for (auto x = 0; x < width; ++x)
-        {
-            auto idx = y * width + x;
-            auto fx = double(x) / double(width)  - 0.5;
-            auto fy = double(y) / double(height) - 0.5;
+        printf_s("%.2lf%% complete\r", (double(s)/double(samples) * 100.0));
+         Random random(uint32_t(s) + 1);
 
-            // Let's レイトレ！
-            image[idx] += radiance(camera.emit(fx, fy), 0);
+        #pragma omp parallel for schedule(dynamic, 1) num_threads(4)
+        for (auto y = 0; y < height; ++y)
+        {
+            for (auto x = 0; x < width; ++x)
+            {   
+                auto idx = y * width + x;
+
+                auto fx = double(x) / double(width)  - 0.5;
+                auto fy = double(y) / double(height) - 0.5;
+
+                // Let's レイトレ！
+                image[idx] += radiance(camera.emit(fx, fy), 0, &random) / samples;
+            }
         }
     }
 

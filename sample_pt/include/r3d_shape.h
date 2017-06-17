@@ -32,18 +32,21 @@ struct Sphere
     Vector3         pos;        //!< 位置座標です.
     Vector3         color;      //!< 色です.
     ReflectionType  type;       //!< 反射タイプです.
+    Vector3         emission;   //!< 自己照明成分.
 
     Sphere
     (
         double          r,
         const Vector3&  p,
         const Vector3&  c,
-        ReflectionType  t
+        ReflectionType  t,
+        const Vector3&  e
     )
     : radius    (r)
     , pos       (p)
     , color     (c)
     , type      (t)
+    , emission  (e)
     { /* DO_NOTHING*/ }
 
     inline double intersect(const Ray& ray) const
