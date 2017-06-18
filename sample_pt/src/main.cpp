@@ -32,7 +32,6 @@ const Sphere  g_spheres[] = {
     Sphere(16.5,    Vector3(73.0,          16.5,          78.0), Vector3(0.99,  0.99,  0.99), ReflectionType::Refraction,       Vector3(0, 0, 0)),
     Sphere(5.0,     Vector3(50.0,          81.6,          81.6), Vector3(),                   ReflectionType::Diffuse,          Vector3(12, 12, 12))
 };
-//Random      g_random(123456);
 
 
 //-------------------------------------------------------------------------------------------------
@@ -175,34 +174,6 @@ Vector3 radiance(const Ray& input_ray, int depth, Random* random)
                 }
             }
             break;
-
-        case ReflectionType::Specular:
-            {
-                const auto shininess = 500.0;
-                const auto phi = D_2PI * random->get_as_double();
-                const auto cost = pow( 1.0 - random->get_as_double(), 1.0 / (shininess + 1.0) );
-                const auto sint = sqrt( 1.0 - cost * cost );
-                const auto x = cos( phi ) * sint;
-                const auto y = sin( phi ) * sint;
-                const auto z = cost;
-
-                // 基底ベクトル.
-                Vector3 u, v, w;
-
-                w = reflect(ray.dir, normal);
-                if (abs(w.x) > 0.1)
-                { u = normalize(cross(Vector3(0, 1, 0), w)); }
-                else
-                { u = normalize(cross(Vector3(1, 0, 0), w)); }
-                v = cross(w, u);
-
-                auto dir = normalize(u * x + v * y * z * w);
-                auto cosine = dot(dir, normal);
-
-                ray = Ray(hit_pos, dir);
-                W *= (obj.color * cosine * (shininess + 2.0) / (shininess + 1.0)) / p;
-            }
-            break;
         }
 
         depth++;
@@ -266,6 +237,8 @@ int main(int argc, char** argv)
     std::vector<Vector3> image;
     image.resize(width * height);
 
+    Random random(123456);
+
     // レンダーターゲットをクリア.
     for (size_t i = 0; i < image.size(); ++i)
     { image[i] = g_back_ground; }
@@ -273,9 +246,7 @@ int main(int argc, char** argv)
     for(auto s = 0; s < samples; ++s)
     {
         printf_s("%.2lf%% complete\r", (double(s)/double(samples) * 100.0));
-         Random random(uint32_t(s) + 1);
 
-        #pragma omp parallel for schedule(dynamic, 1) num_threads(4)
         for (auto y = 0; y < height; ++y)
         {
             for (auto x = 0; x < width; ++x)
